@@ -29,6 +29,14 @@ class PromptUpdate(PromptBase):
     pass
 
 
+# Added PromptPatch for partial updates
+class PromptPatch(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+    description: Optional[str] = None
+    collection_id: Optional[str] = None
+
+
 class Prompt(PromptBase):
     id: str = Field(default_factory=generate_id)
     created_at: datetime = Field(default_factory=get_current_time)
@@ -72,3 +80,4 @@ class CollectionList(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     version: str
+
