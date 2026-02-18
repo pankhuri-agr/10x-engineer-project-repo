@@ -56,7 +56,6 @@ def list_prompts(
         prompts = search_prompts(prompts, search)
     
     # Sort by date (newest first)
-    # Note: There might be an issue with the sorting...
     prompts = sort_prompts_by_date(prompts, descending=True)
     
     return PromptList(prompts=prompts, total=len(prompts))
@@ -64,14 +63,12 @@ def list_prompts(
 
 @app.get("/prompts/{prompt_id}", response_model=Prompt)
 def get_prompt(prompt_id: str):
-    # BUG #1: This will raise a 500 error if prompt doesn't exist
-    # because we're accessing .id on None
-    # Should return 404 instead!
     prompt = storage.get_prompt(prompt_id)
     
-    # This line causes the bug - accessing attribute on None
-    if prompt.id:
-        return prompt
+    if not prompt:
+        raise HTTPException(status_code=404, detail="Prompt not found")
+
+    return prompt
 
 
 @app.post("/prompts", response_model=Prompt, status_code=201)
@@ -98,8 +95,7 @@ def update_prompt(prompt_id: str, prompt_data: PromptUpdate):
         if not collection:
             raise HTTPException(status_code=400, detail="Collection not found")
     
-    # BUG #2: We're not updating the updated_at timestamp!
-    # The updated prompt keeps the old timestamp
+    # Update the updated_at timestamp to the current time
     updated_prompt = Prompt(
         id=existing.id,
         title=prompt_data.title,
@@ -107,7 +103,7 @@ def update_prompt(prompt_id: str, prompt_data: PromptUpdate):
         description=prompt_data.description,
         collection_id=prompt_data.collection_id,
         created_at=existing.created_at,
-        updated_at=existing.updated_at  # BUG: Should be get_current_time()
+        updated_at=get_current_time()  # Correctly updates the timestamp
     )
     
     return storage.update_prompt(prompt_id, updated_prompt)
@@ -148,13 +144,16 @@ def create_collection(collection_data: CollectionCreate):
 
 @app.delete("/collections/{collection_id}", status_code=204)
 def delete_collection(collection_id: str):
-    # BUG #4: We delete the collection but don't handle the prompts!
-    # Prompts with this collection_id become orphaned with invalid reference
-    # Should either: delete the prompts, set collection_id to None, or prevent deletion
-    
+    """Deletes a collection and handles associated prompts by deleting them."""
+
     if not storage.delete_collection(collection_id):
         raise HTTPException(status_code=404, detail="Collection not found")
     
-    # Missing: Handle prompts that belong to this collection!
+    # Fetch all prompts that belong to this collection
+    prompts_to_delete = storage.get_prompts_by_collection(collection_id)
     
+    # Delete each prompt
+    for prompt in prompts_to_delete:
+        storage.delete_prompt(prompt.id)
+
     return None
